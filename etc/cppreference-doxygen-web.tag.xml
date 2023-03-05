@@ -5564,8 +5564,8 @@
     </member>
     <member kind="function">
       <type>T</type>
-      <name>capacity</name>
-      <anchorfile>cpp/container/vector/capacity</anchorfile>
+      <name>_capacity</name>
+      <anchorfile>cpp/container/vector/_capacity</anchorfile>
       <anchor></anchor>
       <arglist>(T... args)</arglist>
     </member>
@@ -7040,8 +7040,8 @@
     </member>
     <member kind="function">
       <type>T</type>
-      <name>capacity</name>
-      <anchorfile>cpp/string/basic_string/capacity</anchorfile>
+      <name>_capacity</name>
+      <anchorfile>cpp/string/basic_string/_capacity</anchorfile>
       <anchor></anchor>
       <arglist>(T... args)</arglist>
     </member>
@@ -23175,8 +23175,8 @@
     </member>
     <member kind="function">
       <type>T</type>
-      <name>capacity</name>
-      <anchorfile>cpp/string/basic_string/capacity</anchorfile>
+      <name>_capacity</name>
+      <anchorfile>cpp/string/basic_string/_capacity</anchorfile>
       <anchor></anchor>
       <arglist>(T... args)</arglist>
     </member>
@@ -23963,8 +23963,8 @@
     </member>
     <member kind="function">
       <type>T</type>
-      <name>capacity</name>
-      <anchorfile>cpp/string/basic_string/capacity</anchorfile>
+      <name>_capacity</name>
+      <anchorfile>cpp/string/basic_string/_capacity</anchorfile>
       <anchor></anchor>
       <arglist>(T... args)</arglist>
     </member>
@@ -26080,8 +26080,8 @@
     </member>
     <member kind="function">
       <type>T</type>
-      <name>capacity</name>
-      <anchorfile>cpp/string/basic_string/capacity</anchorfile>
+      <name>_capacity</name>
+      <anchorfile>cpp/string/basic_string/_capacity</anchorfile>
       <anchor></anchor>
       <arglist>(T... args)</arglist>
     </member>
@@ -26932,8 +26932,8 @@
     </member>
     <member kind="function">
       <type>T</type>
-      <name>capacity</name>
-      <anchorfile>cpp/string/basic_string/capacity</anchorfile>
+      <name>_capacity</name>
+      <anchorfile>cpp/string/basic_string/_capacity</anchorfile>
       <anchor></anchor>
       <arglist>(T... args)</arglist>
     </member>

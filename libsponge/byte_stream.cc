@@ -14,16 +14,13 @@ void DUMMY_CODE(Targs &&... /* unused */) {}
 using namespace std;
 
 ByteStream::ByteStream(const size_t capacity) {
-    this->capacity = capacity;
-    is_end = false;
-    write_num = 0;
-    read_num = 0;
+    this->_capacity = capacity;
 }
 
 size_t ByteStream::write(const string &data) {
     size_t haveWriten = 0;
     for (auto byte : data) {
-        if (stream.size() < capacity) {
+        if (stream.size() < _capacity) {
             stream.push_back(byte);
             haveWriten++;
             write_num++;
@@ -89,5 +86,5 @@ size_t ByteStream::bytes_read() const {
 }
 
 size_t ByteStream::remaining_capacity() const {
-    return capacity - stream.size();
+    return _capacity - stream.size();
 }
