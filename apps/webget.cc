@@ -8,7 +8,7 @@ using namespace std;
 
 void get_URL(const string &host, const string &path) {
 
-    TCPSocket tcpSocket{};
+    TCPSocket tcpSocket;
     tcpSocket.connect(Address(host, "http"));
     tcpSocket.write("GET "+ path + " HTTP/1.1\r\n"
                       + "Host: " + host + "\r\n"
