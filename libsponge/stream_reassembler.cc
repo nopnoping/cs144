@@ -1,4 +1,5 @@
 #include "stream_reassembler.hh"
+#include <sstream>
 
 // Dummy implementation of a stream reassembler.
 
@@ -12,49 +13,53 @@ void DUMMY_CODE(Targs &&... /* unused */) {}
 
 using namespace std;
 
-StreamReassembler::StreamReassembler(const size_t capacity) : _output(capacity), _capacity(capacity) {}
+StreamReassembler::StreamReassembler(const size_t capacity) : _output(capacity), _capacity(capacity),
+    _buffer(capacity), _bitmap(capacity){}
 
 //! \details This function accepts a substring (aka a segment) of bytes,
 //! possibly out-of-order, from the logical stream, and assembles any newly
 //! contiguous substrings and writes them into the output stream in order.
 void StreamReassembler::push_substring(const string &data, const size_t index, const bool eof) {
-    // 1. the end byte of substring is in limit?
-    // 2. the start of substring is start of unassembled?
-    // 3. the unassembled bytes need send to _output?
-    // 4. the start of unasssembled how to update?
-    size_t end_substring = index + data.length();
-    if (end_substring <= _wish_index - _output.buffer_size() + _capacity
-        && index >= _wish_index
-        && _map.find(index) == _map.end()) {
-
-        if (index == _wish_index) {
-            _output.write(data);
-            _wish_index += data.length();
-            while (_map.find(_wish_index) != _map.end()) {
-                _output.write(_map[_wish_index]);
-                size_t l = _map[_wish_index].length();
-                _map.erase(_wish_index);
-                _wish_index += l;
-            }
-        } else {
-            _map[index] = data;
+    // only last word write to buffer
+    // the eof can be initial
+    if (eof) {
+        size_t len = data.length();
+        if (index + len <= _buffer_start - _output.buffer_size() + _capacity) {
+            _eof = true;
         }
-
-        if (eof) {
-            _output.end_input();
-        }
-
     }
+    // the index is in capacity
+    for (size_t i = index; i < _buffer_start - _output.buffer_size() + _capacity && i < index + data.length(); i++) {
+        if (i >= _buffer_start && !_bitmap[i-_buffer_start]) {
+            _bitmap[i-_buffer_start] = true;
+            _buffer[i-_buffer_start] = data[i-index];
+            _unass_size++;
+        }
+    }
+
+    // write to _out
+    std::stringstream ss;
+    while (_bitmap.front()) {
+        ss << _buffer.front();
+        _buffer_start++;
+        _unass_size--;
+        _buffer.pop_front();
+        _bitmap.pop_front();
+        _buffer.push_back('\0');
+        _bitmap.push_back(false);
+    }
+    _output.write(ss.str());
+
+    if (_eof && _unass_size == 0) {
+        _output.end_input();
+    }
+
 }
 
 size_t StreamReassembler::unassembled_bytes() const {
-    size_t num = 0;
-    for (auto &[k, v] : _map) {
-        num += v.length();
-    }
-    return num;
+    return _unass_size;
 }
 
 bool StreamReassembler::empty() const {
-    return _map.empty();
+    return _unass_size == 0;
 }
