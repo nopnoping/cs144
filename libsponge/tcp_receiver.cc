@@ -11,15 +11,18 @@ void DUMMY_CODE(Targs &&... /* unused */) {}
 using namespace std;
 
 void TCPReceiver::segment_received(const TCPSegment &seg) {
+    // if the seg has fin flag, we use eof to tag it.
     bool eof = false;
     if (seg.header().fin)
         eof = true;
 
+    // Firstly receive.Store initial seqno.
     if (!_is_receive && seg.header().syn) {
         _is_receive = true;
         _initial_seq_no = seg.header().seqno;
         _reassembler.push_substring(seg.payload().copy(), 0, eof);
     } else if (_is_receive) {
+        // Through get buffer start to compute checkpoint
         uint64_t checkpoint = _reassembler.get_buffer_start() == 0 ? 0 : _reassembler.get_buffer_start() - 1;
         uint64_t absolute_seqno = unwrap(seg.header().seqno, _initial_seq_no, checkpoint);
         _reassembler.push_substring(seg.payload().copy(), absolute_seqno-1, eof);
@@ -30,6 +33,7 @@ optional<WrappingInt32> TCPReceiver::ackno() const {
     if (!_is_receive)
         return nullopt;
     uint64_t absolute_sqno = _reassembler.get_buffer_start() + 1;
+    // if fin segment has been written, the ackno should plus fin seqno
     if (_reassembler.stream_out().input_ended())
         absolute_sqno++;
     return wrap(absolute_sqno, _initial_seq_no);
