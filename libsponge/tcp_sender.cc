@@ -53,8 +53,7 @@ void TCPSender::fill_window() {
             _finished = true;
         }
         // 如果没有数据
-        if ((segment.length_in_sequence_space() == 0 && !payload_empty_can_send) ||
-            (segment.header().syn && _next_seqno != 0))
+        if (segment.length_in_sequence_space() == 0 && !payload_empty_can_send)
             break;
         segment.header().seqno = wrap(_next_seqno, _isn);
         RetransmissionTimer timer(segment, 0, _next_seqno);
