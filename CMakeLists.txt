@@ -25,3 +25,6 @@ add_subdirectory ("${PROJECT_SOURCE_DIR}/tests")
 add_subdirectory ("${PROJECT_SOURCE_DIR}/doctests")
 
 include (etc/tests.cmake)
+
+set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_CXX_FLAGS_DEBUG “${CMAKE_CXX_FLAGS_DEBUG} -O0”)

@@ -29,9 +29,15 @@ class TCPConnection {
 
     bool _time_wait = false;
 
+    bool _send_syn = false;
+
+    bool _rev_syn = false;
+
     void send_all_segment();
 
     void send_rst_segment();
+
+    void help_fill_send_segment(const TCPSegment &seg);
 
   public:
     //! \name "Input" interface for the writer

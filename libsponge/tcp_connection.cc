@@ -28,11 +28,13 @@ size_t TCPConnection::time_since_last_segment_received() const {
     return _time_since_last_segment_received;
 }
 
-void TCPConnection::segment_received(const TCPSegment &seg) {
 
+void TCPConnection::help_fill_send_segment(const TCPSegment &seg) {
     // RST
     if (seg.header().rst) {
         _active = false;
+        _sender.stream_in().set_error();
+        _receiver.stream_out().set_error();
         return ;
     }
 
@@ -64,12 +66,59 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
 
     // 把所有segment发出
     _sender.fill_window();
-    if (_sender.segments_out().empty() && seg.length_in_sequence_space() != 0) {
+    if (_sender.segments_out().empty() &&
+        (seg.length_in_sequence_space() != 0 ||
+         _sender.parse_ackno_to_absolute(seg.header().ackno) > _sender.next_seqno_absolute())) {
         _sender.send_empty_segment();
     }
     send_all_segment();
 
     _time_since_last_segment_received = 0;
+}
+void TCPConnection::segment_received(const TCPSegment &seg) {
+    // 第一次接收syn
+    if (!_rev_syn && seg.header().syn) {
+        _rev_syn = true;
+    }
+    // 没有发送syn，收到ack
+    if (!_send_syn && seg.header().ack) {
+        send_rst_segment();
+        return ;
+    }
+    // 没有发送syn，收到rst
+    if (!_send_syn && seg.header().rst) {
+        return ;
+    }
+
+    if (_send_syn && !_rev_syn) {
+        // SYN_SENT状态，忽略没有rst的ack
+        if (!seg.header().rst && seg.header().ack) {
+            if (_sender.parse_ackno_to_absolute(seg.header().ackno) != 1) {
+                _sender.send_empty_segment();
+                TCPSegment rst_seg = _sender.segments_out().front();_sender.segments_out().pop();
+                rst_seg.header().seqno = seg.header().ackno;
+                rst_seg.header().rst = true;
+                _segments_out.push(rst_seg);
+                _active = false;
+                _sender.stream_in().set_error();
+                _receiver.stream_out().set_error();
+            }
+            return ;
+        }
+        // SYN_SENT状态，忽略没有ack的rst
+        if (seg.header().rst && !seg.header().ack)
+            return ;
+        if (seg.header().rst && seg.header().ack) {
+            if (_sender.parse_ackno_to_absolute(seg.header().ackno) == 1) {
+                _active = false;
+                _sender.stream_in().set_error();
+                _receiver.stream_out().set_error();
+            }
+            return ;
+        }
+    }
+
+    help_fill_send_segment(seg);
 }
 
 bool TCPConnection::active() const {
@@ -105,8 +154,7 @@ void TCPConnection::end_input_stream() {
 
 void TCPConnection::connect() {
     _sender.fill_window();
-    _segments_out.push(_sender.segments_out().front());
-    _sender.segments_out().pop();
+    send_all_segment();
 }
 
 TCPConnection::~TCPConnection() {
@@ -131,6 +179,8 @@ void TCPConnection::send_all_segment() {
             seg_send.header().win = _receiver.window_size();
         }
         _segments_out.push(seg_send);
+        if (seg_send.header().syn)
+            _send_syn = true;
         if (seg_send.header().fin)
             _has_sent_fin = true;
     }
@@ -143,4 +193,6 @@ void TCPConnection::send_rst_segment() {
     rst_seg.header().rst = true;
     _segments_out.push(rst_seg);
     _active = false;
+    _sender.stream_in().set_error();
+    _receiver.stream_out().set_error();
 }
