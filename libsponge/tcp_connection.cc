@@ -29,8 +29,13 @@ size_t TCPConnection::time_since_last_segment_received() const {
 }
 
 void TCPConnection::segment_received(const TCPSegment &seg) {
-    if (_has_sent_fin && _linger_after_streams_finish && _time_since_last_segment_received >= 10 * _cfg.rt_timeout)
+
+    // RST
+    if (seg.header().rst) {
         _active = false;
+        return ;
+    }
+
     // 处理keep-alive case
     if (_receiver.ackno().has_value() && seg.length_in_sequence_space() == 0
         && seg.header().seqno == _receiver.ackno().value() - 1) {
@@ -42,14 +47,24 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
         }
     }
 
-    // 收到了fin，但是之前没有发出过fin，则不需要linger
+    // established -> close-wait
+    // 收到remote的fin，但是自己没有fin
     if (_receiver.stream_out().input_ended() && !_has_sent_fin)
         _linger_after_streams_finish = false;
 
+    // 内容全部发送，并且都被ack
+    if (_has_sent_fin && _sender.bytes_in_flight() == 0) {
+        if (!_linger_after_streams_finish) {
+            _active = false;
+            return ;
+        } else if (_receiver.stream_out().input_ended()) {
+            _time_wait = true;
+        }
+    }
+
     // 把所有segment发出
     _sender.fill_window();
-    bool is_send = send_all_segment();
-    if (!is_send) {
+    if (_sender.segments_out().empty() && seg.length_in_sequence_space() != 0) {
         _sender.send_empty_segment();
     }
     send_all_segment();
@@ -58,19 +73,22 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
 }
 
 bool TCPConnection::active() const {
-    if (_has_sent_fin && _linger_after_streams_finish && _time_since_last_segment_received >= 10 * _cfg.rt_timeout)
-        return false;
     return _active;
 }
 
 size_t TCPConnection::write(const string &data) {
     size_t s = _sender.stream_in().write(data);
+    _sender.fill_window();
+    send_all_segment();
     return s;
 }
 
 //! \param[in] ms_since_last_tick number of milliseconds since the last call to this method
 void TCPConnection::tick(const size_t ms_since_last_tick) {
     _time_since_last_segment_received += ms_since_last_tick;
+    // TIME_WAIT
+    if (_time_wait && _time_since_last_segment_received >= 10 * _cfg.rt_timeout)
+        _active = false;
     _sender.tick(ms_since_last_tick);
     if (_sender.consecutive_retransmissions() >= TCPConfig::MAX_RETX_ATTEMPTS) {
         send_rst_segment();
@@ -81,6 +99,8 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
 
 void TCPConnection::end_input_stream() {
     _sender.stream_in().end_input();
+    _sender.fill_window();
+    send_all_segment();
 }
 
 void TCPConnection::connect() {
@@ -101,8 +121,7 @@ TCPConnection::~TCPConnection() {
 }
 
 // helper 正常情况下，发送所有数据
-bool TCPConnection::send_all_segment() {
-    bool is_send = false;
+void TCPConnection::send_all_segment() {
     while (!_sender.segments_out().empty()) {
         TCPSegment& seg_send = _sender.segments_out().front();
         _sender.segments_out().pop();
@@ -112,14 +131,9 @@ bool TCPConnection::send_all_segment() {
             seg_send.header().win = _receiver.window_size();
         }
         _segments_out.push(seg_send);
-        // 发送了FIN，并且不是linger状态
-        if (seg_send.header().fin && !_linger_after_streams_finish)
-            _active = false;
         if (seg_send.header().fin)
             _has_sent_fin = true;
-        is_send = true;
     }
-    return is_send;
 }
 
 void TCPConnection::send_rst_segment() {

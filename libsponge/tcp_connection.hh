@@ -27,7 +27,9 @@ class TCPConnection {
 
     bool _has_sent_fin = false;
 
-    bool send_all_segment();
+    bool _time_wait = false;
+
+    void send_all_segment();
 
     void send_rst_segment();
 

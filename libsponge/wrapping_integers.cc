@@ -33,7 +33,7 @@ uint64_t unwrap(WrappingInt32 n, WrappingInt32 isn, uint64_t checkpoint) {
     uint32_t offset = n - checkpoint_relative;
     uint64_t result = checkpoint + offset;
     // judge offset is more close
-    if (offset > (1u << 31) && result > (1ul << 32)) {
+    if (offset > (1u << 31) && result >= (1ul << 32)) {
         result -= (1ul << 32);
     }
     return result;
