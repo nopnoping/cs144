@@ -10,25 +10,6 @@
 #include <queue>
 #include <list>
 
-class RetransmissionTimer {
-  private:
-    TCPSegment _segment;
-    size_t _timeout;
-    uint64_t _absolute_no;
-    uint32_t _retrans_time = 0;
-  public:
-    RetransmissionTimer(TCPSegment segment, size_t timeout, uint64_t absolute_no);
-    bool is_time_out(size_t rst);
-    bool operator<(const RetransmissionTimer&r) const {
-      return _timeout >= r._timeout;
-    };
-    TCPSegment get_segment() const { return _segment;}
-    uint64_t absolute_no() const { return _absolute_no;}
-    void clear_time() {_timeout = 0;}
-    void add_time(size_t time) {_timeout+=time;}
-    void up_retrans_time() {_retrans_time++;}
-    uint32_t retrans_time() const { return _retrans_time;}
-};
 //! \brief The "sender" part of a TCP implementation.
 
 //! Accepts a ByteStream, divides it up into segments and sends the
@@ -54,9 +35,11 @@ class TCPSender {
 
     uint16_t _window_size = 1;
 
-    uint64_t _last_absolute_no = 0;
+    std::deque<TCPSegment> _outgoing_segment{};
 
-    std::deque<RetransmissionTimer> _outgoing_segment{};
+    size_t _time = 0;
+
+    uint32_t _retrans_time = 0;
 
     unsigned int _timeout = _initial_retransmission_timeout;
 
@@ -117,7 +100,7 @@ class TCPSender {
     //! \brief relative seqno for the next byte to be sent
     WrappingInt32 next_seqno() const { return wrap(_next_seqno, _isn); }
 
-    bool is_future_ackno(WrappingInt32 ackno) const {return unwrap(ackno, _isn, _last_absolute_no) > next_seqno_absolute();}
+    bool is_future_ackno(WrappingInt32 ackno) const {return unwrap(ackno, _isn, _next_seqno) > next_seqno_absolute();}
     //!@}
 };
 

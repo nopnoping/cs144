@@ -35,7 +35,6 @@ void TCPConnection::handle_segment(const TCPSegment &seg) {
         rst_error();
         return ;
     }
-
     // 处理keep-alive case
     if (_receiver.ackno().has_value() && seg.length_in_sequence_space() == 0
         && seg.header().seqno == _receiver.ackno().value() - 1) {
@@ -74,6 +73,10 @@ void TCPConnection::handle_segment(const TCPSegment &seg) {
     _time_since_last_segment_received = 0;
 }
 void TCPConnection::segment_received(const TCPSegment &seg) {
+
+    if (!_active)
+        return ;
+
     // CLOSED/LISTEN
     if (!_send_syn && !_rev_syn) {
         // SYN_RECEIVED

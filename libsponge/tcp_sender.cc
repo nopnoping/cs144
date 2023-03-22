@@ -26,7 +26,7 @@ TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const s
 uint64_t TCPSender::bytes_in_flight() const {
     size_t total = 0;
     for (auto& r:_outgoing_segment) {
-       total += r.get_segment().length_in_sequence_space();
+       total += r.length_in_sequence_space();
     }
     return total;
 }
@@ -53,19 +53,11 @@ void TCPSender::fill_window() {
         }
         // 如果没有数据
         if (segment.length_in_sequence_space() == 0) {
-            // 如果是零窗口，并且没有待处理的seg，发送一个零窗口探测payload
-            if (_window_size == 0 && _outgoing_segment.empty() && !_stream.eof()) {
-                segment.header().seqno = wrap(_next_seqno-1, _isn);
-                RetransmissionTimer timer(segment, 0, _next_seqno-1);
-                _segments_out.push(segment);
-                _outgoing_segment.push_back(timer);
-            }
             break;
         }
         segment.header().seqno = wrap(_next_seqno, _isn);
-        RetransmissionTimer timer(segment, 0, _next_seqno);
         _segments_out.push(segment);
-        _outgoing_segment.push_back(timer);
+        _outgoing_segment.push_back(segment);
 
         _next_seqno += segment.length_in_sequence_space();
         can_send_size -= payload_size;
@@ -76,23 +68,17 @@ void TCPSender::fill_window() {
 //! \param window_size The remote receiver's advertised window size
 void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_size) {
     _window_size = window_size;
-    uint64_t absolute_no = unwrap(ackno, _isn, _last_absolute_no);
-    if (absolute_no > _last_absolute_no)
-        _last_absolute_no = absolute_no;
+    uint64_t absolute_no = unwrap(ackno, _isn, next_seqno_absolute());
 
     // 移除已经接收的segment
-    bool can_clear_time = false;
     while (!_outgoing_segment.empty()
            && absolute_no >=
-                  _outgoing_segment.front().get_segment().length_in_sequence_space()
-                      + _outgoing_segment.front().absolute_no()
+                  _outgoing_segment.front().length_in_sequence_space()
+                      + unwrap(_outgoing_segment.front().header().seqno, _isn, _next_seqno)
            && absolute_no <= _next_seqno) {
         _outgoing_segment.pop_front();
-        can_clear_time = true;
-    }
-    // 清除时间
-    for (size_t i=0; i<_outgoing_segment.size() && can_clear_time; i++) {
-        _outgoing_segment[i].clear_time();
+        _time = 0;
+        _retrans_time = 0;
     }
     fill_window();
     _timeout = _initial_retransmission_timeout;
@@ -100,38 +86,31 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
 void TCPSender::tick(const size_t ms_since_last_tick) {
-    for (size_t i=0; i<_outgoing_segment.size(); i++) {
-        _outgoing_segment[i].add_time(ms_since_last_tick);
-    }
     if (_window_size == 0) {
         _timeout = _initial_retransmission_timeout;
     }
-    // 超时，重传
-    if (!_outgoing_segment.empty() && _outgoing_segment[0].is_time_out(_timeout)) {
-        _segments_out.push(_outgoing_segment[0].get_segment());
-        if (_window_size != 0)
-            _outgoing_segment[0].up_retrans_time();
-        _timeout = _timeout * 2;
-        _outgoing_segment[0].clear_time();
+
+    if (!_outgoing_segment.empty()) {
+        _time += ms_since_last_tick;
+        if (_time >= _timeout) {
+            _retrans_time++;
+            _time = 0;
+            _timeout *= 2;
+            _segments_out.push(_outgoing_segment.front());
+        }
+    } else {
+        _time = 0;
+        _retrans_time = 0;
+        _timeout = _initial_retransmission_timeout;
     }
 }
 
 unsigned int TCPSender::consecutive_retransmissions() const {
-    return _outgoing_segment.empty() ? 0 : _outgoing_segment[0].retrans_time();
+    return _retrans_time;
 }
 
 void TCPSender::send_empty_segment() {
     TCPSegment segment;
     segment.header().seqno = wrap(_next_seqno, _isn);
     _segments_out.push(segment);
-}
-
-//! RetransmissionTimer
-RetransmissionTimer::RetransmissionTimer(TCPSegment segment, size_t timeout, uint64_t absolute_no)
-    : _segment(segment), _timeout(timeout), _absolute_no(absolute_no) {}
-
-bool RetransmissionTimer::is_time_out(size_t rst) {
-    if (_timeout >= rst)
-        return true;
-    return false;
 }
