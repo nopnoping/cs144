@@ -54,7 +54,7 @@ void TCPSender::fill_window() {
         // 如果没有数据
         if (segment.length_in_sequence_space() == 0) {
             // 如果是零窗口，并且没有待处理的seg，发送一个零窗口探测payload
-            if (_window_size == 0 && _outgoing_segment.empty()) {
+            if (_window_size == 0 && _outgoing_segment.empty() && !_stream.eof()) {
                 segment.header().seqno = wrap(_next_seqno-1, _isn);
                 RetransmissionTimer timer(segment, 0, _next_seqno-1);
                 _segments_out.push(segment);

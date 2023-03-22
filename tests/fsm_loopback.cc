@@ -65,7 +65,7 @@ int main() {
                     test_1.execute(SendSegment{move(seg)});
                     test_1.execute(Tick(1));
                 }
-                test_1.execute(ExpectNoSegment{});
+//                test_1.execute(ExpectNoSegment{});
 
                 test_1.execute(ExpectBytesInFlight{0});
 

@@ -29,12 +29,10 @@ size_t TCPConnection::time_since_last_segment_received() const {
 }
 
 
-void TCPConnection::help_fill_send_segment(const TCPSegment &seg) {
+void TCPConnection::handle_segment(const TCPSegment &seg) {
     // RST
     if (seg.header().rst) {
-        _active = false;
-        _sender.stream_in().set_error();
-        _receiver.stream_out().set_error();
+        rst_error();
         return ;
     }
 
@@ -68,7 +66,7 @@ void TCPConnection::help_fill_send_segment(const TCPSegment &seg) {
     _sender.fill_window();
     if (_sender.segments_out().empty() &&
         (seg.length_in_sequence_space() != 0 ||
-         _sender.parse_ackno_to_absolute(seg.header().ackno) > _sender.next_seqno_absolute())) {
+         _sender.is_future_ackno(seg.header().ackno))) {
         _sender.send_empty_segment();
     }
     send_all_segment();
@@ -76,49 +74,39 @@ void TCPConnection::help_fill_send_segment(const TCPSegment &seg) {
     _time_since_last_segment_received = 0;
 }
 void TCPConnection::segment_received(const TCPSegment &seg) {
-    // 第一次接收syn
-    if (!_rev_syn && seg.header().syn) {
-        _rev_syn = true;
-    }
-    // 没有发送syn，收到ack
-    if (!_send_syn && seg.header().ack) {
-        send_rst_segment();
-        return ;
-    }
-    // 没有发送syn，收到rst
-    if (!_send_syn && seg.header().rst) {
-        return ;
+    // CLOSED/LISTEN
+    if (!_send_syn && !_rev_syn) {
+        // SYN_RECEIVED
+        if (seg.header().syn && !seg.header().ack && !seg.header().rst) {
+            _rev_syn = true;
+            handle_segment(seg);
+            return ;
+        }
     }
 
+    // SYN_SENT (ack+rst, ack+syn)
     if (_send_syn && !_rev_syn) {
-        // SYN_SENT状态，忽略没有rst的ack
-        if (!seg.header().rst && seg.header().ack) {
-            if (_sender.parse_ackno_to_absolute(seg.header().ackno) != 1) {
-                _sender.send_empty_segment();
-                TCPSegment rst_seg = _sender.segments_out().front();_sender.segments_out().pop();
-                rst_seg.header().seqno = seg.header().ackno;
-                rst_seg.header().rst = true;
-                _segments_out.push(rst_seg);
-                _active = false;
-                _sender.stream_in().set_error();
-                _receiver.stream_out().set_error();
-            }
+        if (!seg.header().ack && seg.header().syn) {
+            _rev_syn = true;
+            handle_segment(seg);
             return ;
         }
-        // SYN_SENT状态，忽略没有ack的rst
-        if (seg.header().rst && !seg.header().ack)
-            return ;
-        if (seg.header().rst && seg.header().ack) {
-            if (_sender.parse_ackno_to_absolute(seg.header().ackno) == 1) {
-                _active = false;
-                _sender.stream_in().set_error();
-                _receiver.stream_out().set_error();
+        if (seg.header().ack && seg.header().ackno == _sender.next_seqno()) {
+            if (seg.header().rst) {
+                rst_error();
+                return ;
             }
-            return ;
+            if (seg.header().syn) {
+                _rev_syn = true;
+                handle_segment(seg);
+                return ;
+            }
         }
     }
 
-    help_fill_send_segment(seg);
+    // ESTABLISHED
+    if (_send_syn && _rev_syn)
+        handle_segment(seg);
 }
 
 bool TCPConnection::active() const {
@@ -138,9 +126,10 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
     // TIME_WAIT
     if (_time_wait && _time_since_last_segment_received >= 10 * _cfg.rt_timeout)
         _active = false;
+
     _sender.tick(ms_since_last_tick);
-    if (_sender.consecutive_retransmissions() >= TCPConfig::MAX_RETX_ATTEMPTS) {
-        send_rst_segment();
+    if (_sender.consecutive_retransmissions() > TCPConfig::MAX_RETX_ATTEMPTS) {
+        send_rst_segment(true);
         return ;
     }
     send_all_segment();
@@ -161,7 +150,7 @@ TCPConnection::~TCPConnection() {
     try {
         if (active()) {
             cerr << "Warning: Unclean shutdown of TCPConnection\n";
-            send_rst_segment();
+            send_rst_segment(true);
         }
     } catch (const exception &e) {
         std::cerr << "Exception destructing TCP FSM: " << e.what() << std::endl;
@@ -186,12 +175,17 @@ void TCPConnection::send_all_segment() {
     }
 }
 
-void TCPConnection::send_rst_segment() {
+void TCPConnection::send_rst_segment(bool error) {
     if (_sender.segments_out().empty())
         _sender.send_empty_segment();
     TCPSegment rst_seg = _sender.segments_out().front();_sender.segments_out().pop();
     rst_seg.header().rst = true;
     _segments_out.push(rst_seg);
+    if (error)
+        rst_error();
+}
+
+void TCPConnection::rst_error() {
     _active = false;
     _sender.stream_in().set_error();
     _receiver.stream_out().set_error();

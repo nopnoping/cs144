@@ -117,7 +117,7 @@ class TCPSender {
     //! \brief relative seqno for the next byte to be sent
     WrappingInt32 next_seqno() const { return wrap(_next_seqno, _isn); }
 
-    uint64_t parse_ackno_to_absolute(WrappingInt32 ackno) const {return unwrap(ackno, _isn, _last_absolute_no);}
+    bool is_future_ackno(WrappingInt32 ackno) const {return unwrap(ackno, _isn, _last_absolute_no) > next_seqno_absolute();}
     //!@}
 };
 

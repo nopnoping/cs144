@@ -33,11 +33,13 @@ class TCPConnection {
 
     bool _rev_syn = false;
 
+    void rst_error();
+
     void send_all_segment();
 
-    void send_rst_segment();
+    void send_rst_segment(bool error);
 
-    void help_fill_send_segment(const TCPSegment &seg);
+    void handle_segment(const TCPSegment &seg);
 
   public:
     //! \name "Input" interface for the writer
