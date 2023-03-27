@@ -28,15 +28,34 @@ void Router::add_route(const uint32_t route_prefix,
                        const size_t interface_num) {
     cerr << "DEBUG: adding route " << Address::from_ipv4_numeric(route_prefix).ip() << "/" << int(prefix_length)
          << " => " << (next_hop.has_value() ? next_hop->ip() : "(direct)") << " on interface " << interface_num << "\n";
+    // 重复的情况？
+    RouteInfo routInfo{route_prefix, prefix_length, next_hop, interface_num};
+    _route_infos.push_back(routInfo);
 
-    DUMMY_CODE(route_prefix, prefix_length, next_hop, interface_num);
-    // Your code here.
 }
 
 //! \param[in] dgram The datagram to be routed
 void Router::route_one_datagram(InternetDatagram &dgram) {
-    DUMMY_CODE(dgram);
-    // Your code here.
+    int max_prefix = -1;
+    RouteInfo routeInfo{};
+    if (dgram.header().ttl == 0)
+        return ;
+    dgram.header().ttl--;
+    for (auto ri:_route_infos) {
+        uint32_t target_ip = dgram.header().dst;
+        if ((((ri.route_prefix ^ target_ip) >> (32 - ri.prefix_length)) == 0 || ri.prefix_length == 0) &&
+            ri.prefix_length > max_prefix){
+            routeInfo = ri;
+            max_prefix = ri.prefix_length;
+        }
+    }
+    if (max_prefix != -1) {
+        if (dgram.header().ttl == 0 && routeInfo.next_hop.has_value())
+            return ;
+        interface(routeInfo.interface_num).send_datagram(dgram,
+                                                         routeInfo.next_hop == nullopt ? Address::from_ipv4_numeric(dgram.header().dst)
+                                                                                       : routeInfo.next_hop.value());
+    }
 }
 
 void Router::route() {
